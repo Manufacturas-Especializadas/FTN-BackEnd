@@ -1,0 +1,154 @@
+[
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "GetAvailableYear",
+    "RelativePath": "api/StageEntrance/AvailableYears",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "Create",
+    "RelativePath": "api/StageEntrance/Create",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "FTN.Dtos.StageEntrancesDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "Delete",
+    "RelativePath": "api/StageEntrance/Delete/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "GetStageEntranceById",
+    "RelativePath": "api/StageEntrance/GetStageEntranceById/{id}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "GetStageEntrances",
+    "RelativePath": "api/StageEntrance/GetStageEntrances",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "GetMonthlyReport",
+    "RelativePath": "api/StageEntrance/MonthlyReport/{year}/{month}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "year",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "month",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "DownloadMonthlyReportExcel",
+    "RelativePath": "api/StageEntrance/MonthlyReportExcel/{year}/{month}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "year",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "month",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "Update",
+    "RelativePath": "api/StageEntrance/Update/{id}",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "FTN.Dtos.StageEntrancesDto",
+        "IsRequired": true
+      },
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "FTN.Controllers.StageEntranceController",
+    "Method": "UpdateExits",
+    "RelativePath": "api/StageEntrance/UpdateExits/{id}",
+    "HttpMethod": "PATCH",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "FTN.Dtos.StageExitsDto",
+        "IsRequired": true
+      },
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  }
+]
