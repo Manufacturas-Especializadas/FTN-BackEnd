@@ -67,6 +67,70 @@ namespace FTN.Controllers
         }
 
         [HttpGet]
+        [Route("SearchByPartNumber/{partNumber}")]
+        public async Task<IActionResult> SearchByPartNumber(string partNumber)
+        {
+            try
+            {
+                var results = await _context.StageEntrances
+                        .Where(se => se.PartNumber.Contains(partNumber) && se.Platforms > 0)
+                        .Select(se => new
+                        {
+                            se.Id,
+                            se.Folio,
+                            se.PartNumber,
+                            se.Platforms,
+                            se.NumberOfPieces,
+                            se.EntryDate,
+                            se.ExitDate,
+                        })
+                        .AsNoTracking()
+                        .ToListAsync();
+
+                var groupedResults = results
+                        .SelectMany(se => se.PartNumber.Split(',')
+                            .Select(pn => new
+                            {
+                                PartNumber = pn.Trim(),
+                                se.Id,
+                                se.Folio,
+                                se.Platforms,
+                                se.NumberOfPieces,
+                                se.EntryDate,
+                                se.ExitDate
+                            }))
+                        .Where(x => x.PartNumber.Contains(partNumber))
+                        .GroupBy(x => x.PartNumber)
+                        .Select(g => new
+                        {
+                            PartNumber = g.Key,
+                            Folios = g.Select(x => new
+                            {
+                                x.Folio,
+                                x.PartNumber,
+                                x.NumberOfPieces,
+                                x.EntryDate,
+                                x.ExitDate
+                            }).ToList(),
+                            TotalPlatforms = g.Sum(x => x.Platforms ?? 0),
+                            TotalPieces = g.Sum(x => x.NumberOfPieces ?? 0)
+                        })
+                        .ToList();
+
+                return Ok(groupedResults);
+            }
+            catch(Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error al buscar por número de parte",
+                    detalles = ex.Message
+                });
+            }
+        }
+
+        [HttpGet]
         [Route("MonthlyReport/{year}/{month}")]
         public async Task<IActionResult> GetMonthlyReport(int year, int month)
         {
