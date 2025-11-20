@@ -2,7 +2,7 @@
 {
     public class StageEntrancesDto
     {
-        public string Folio { get; set; }
+        public int? Folio { get; set; }
 
         public string PartNumber { get; set; }
 

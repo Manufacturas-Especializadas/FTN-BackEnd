@@ -30,7 +30,7 @@ public partial class AppDbContext : DbContext
 
         modelBuilder.Entity<StageEntrances>(entity =>
         {
-            entity.HasKey(e => e.Id).HasName("PK__StageEnt__3214EC07685A44BC");
+            entity.HasKey(e => e.Id).HasName("PK__StageEnt__3214EC0721B56E73");
 
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
@@ -42,9 +42,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.ExitDate)
                 .HasColumnType("datetime")
                 .HasColumnName("exitDate");
-            entity.Property(e => e.Folio)
-                .HasMaxLength(100)
-                .HasColumnName("folio");
+            entity.Property(e => e.Folio).HasColumnName("folio");
             entity.Property(e => e.NumberOfPieces).HasColumnName("numberOfPieces");
             entity.Property(e => e.PartNumber)
                 .HasMaxLength(80)
@@ -58,12 +56,12 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.IdEntranceFeeNavigation).WithMany(p => p.StageEntrances)
                 .HasForeignKey(d => d.IdEntranceFee)
                 .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("FK__StageEntr__IdEnt__5CD6CB2B");
+                .HasConstraintName("FK__StageEntr__IdEnt__619B8048");
 
             entity.HasOne(d => d.IdStorageCostNavigation).WithMany(p => p.StageEntrances)
                 .HasForeignKey(d => d.IdStorageCost)
                 .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("FK__StageEntr__IdSto__5BE2A6F2");
+                .HasConstraintName("FK__StageEntr__IdSto__60A75C0F");
         });
 
         modelBuilder.Entity<StorageCost>(entity =>

@@ -7,7 +7,7 @@ public partial class StageEntrances
 {
     public int Id { get; set; }
 
-    public string Folio { get; set; }
+    public int? Folio { get; set; }
 
     public string PartNumber { get; set; }
 

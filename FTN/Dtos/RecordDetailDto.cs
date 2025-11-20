@@ -3,7 +3,7 @@
     public class RecordDetailDto
     {
         public int Id { get; set; }
-        public string Folio { get; set; }
+        public int? Folio { get; set; }
         public string PartNumber { get; set; }
         public int? Pallets { get; set; }
         public DateTime EntryDate { get; set; }
