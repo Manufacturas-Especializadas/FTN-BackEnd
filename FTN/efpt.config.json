@@ -20,6 +20,10 @@
          "ObjectType": 0
       },
       {
+         "Name": "[dbo].[StageEntrancePartNumbers]",
+         "ObjectType": 0
+      },
+      {
          "Name": "[dbo].[StageEntrances]",
          "ObjectType": 0
       },
@@ -43,7 +47,7 @@
    "UseInflector": false,
    "UseInternalAccessModifiersForSprocsAndFunctions": false,
    "UseLegacyPluralizer": false,
-   "UseManyToManyEntity": false,
+   "UseManyToManyEntity": true,
    "UseNoDefaultConstructor": false,
    "UseNoNavigations": false,
    "UseNoObjectFilter": false,
