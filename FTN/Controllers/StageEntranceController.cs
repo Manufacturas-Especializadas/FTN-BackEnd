@@ -2,10 +2,13 @@
 using FTN.Dtos;
 using FTN.Models;
 using FTN.Services;
+using FTN.Utils;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query.Internal;
+using System.Diagnostics;
+using System.Linq;
 using System.Reflection.Metadata.Ecma335;
 using static FTN.Services.ExcelReportService;
 
@@ -34,33 +37,56 @@ namespace FTN.Controllers
         [Route("GetStageEntrances")]
         public async Task<IActionResult> GetStageEntrances()
         {
-            var stageEntrance = await _context.StageEntrances
-                            .AsNoTracking()
-                            .Select(s => new
-                            {
-                                s.Id,
-                                s.Folio,
-                                s.PartNumber,
-                                s.Platforms,
-                                s.NumberOfPieces,
-                                s.EntryDate,
-                                EntranceFee = s.IdEntranceFeeNavigation.Cost,
-                                StorageCost = s.IdStorageCostNavigation.Cost,
-                            })
-                            .ToListAsync();
+            var stageEntrances = await _context.StageEntrances
+                    .AsNoTracking()
+                    .Select(se => new
+                    {
+                        se.Id,
+                        se.Folio,
+                        PartNumbers = _context.StageEntrancePartNumbers
+                            .Where(pn => pn.StageEntranceId == se.Id)
+                            .Select(pn => new { pn.PartNumber, pn.Quantity })
+                            .ToList(),
+                        se.TotalPieces,
+                        se.Platforms,
+                        se.EntryDate,
+                        se.ExitDate,
+                        EntranceFee = se.IdEntranceFeeNavigation != null ? se.IdEntranceFeeNavigation.Cost : 67.50m,
+                        StorageCost = se.IdStorageCostNavigation != null ? se.IdStorageCostNavigation.Cost : 133
+                    })
+                    .ToListAsync();
 
-            return Ok(stageEntrance);
+            return Ok(stageEntrances);
         }
 
         [HttpGet]
         [Route("GetStageEntranceById/{id}")]
         public async Task<IActionResult> GetStageEntranceById(int id)
         {
-            var stageEntrance = await _context.StageEntrances.FindAsync(id);
+            var stageEntrance = await _context.StageEntrances
+                    .AsNoTracking()
+                    .Where(se => se.Id == id)
+                    .Select(se => new
+                    {
+                        se.Id,
+                        se.Folio,
+                        se.TotalPieces,
+                        se.Platforms,
+                        se.EntryDate,
+                        se.ExitDate,
+                        se.CreatedAt,
+                        se.UpdatedAt,
+                        PartNumbers = _context.StageEntrancePartNumbers
+                            .Where(pn => pn.StageEntranceId == id)
+                            .Select(pn => new { pn.Id, pn.PartNumber, pn.Quantity }),
+                        IdStorageCost = se.IdStorageCost,
+                        IdEntranceFee = se.IdEntranceFee,
+                    })
+                    .FirstOrDefaultAsync();
 
             if(stageEntrance == null)
             {
-                NotFound(new { message = "Registro no encontrado" });
+                return NotFound(new { message = "Registro no encontrado" });
             }
 
             return Ok(stageEntrance);
@@ -72,55 +98,73 @@ namespace FTN.Controllers
         {
             try
             {
-                var results = await _context.StageEntrances
-                        .Where(se => se.PartNumber.Contains(partNumber) && se.Platforms > 0)
-                        .Select(se => new
-                        {
-                            se.Id,
-                            se.Folio,
-                            se.PartNumber,
-                            se.Platforms,
-                            se.NumberOfPieces,
-                            se.EntryDate,
-                            se.ExitDate,
-                        })
-                        .AsNoTracking()
-                        .ToListAsync();
+                var query = from pn in _context.StageEntrancePartNumbers
+                            join se in _context.StageEntrances on pn.StageEntranceId equals se.Id
+                            where pn.PartNumber.Contains(partNumber) && se.Platforms > 0
+                            select new
+                            {
+                                PartNumber = pn.PartNumber,
+                                Quantity = pn.Quantity,
+                                StageEntrance = new
+                                {
+                                    se.Id,
+                                    se.Folio,
+                                    se.Platforms,
+                                    se.TotalPieces,
+                                    se.EntryDate,
+                                    se.ExitDate
+                                }
+                            };
+
+                var results = await query.ToListAsync();
+
+                if (!results.Any())
+                {
+                    return Ok(new List<object>());
+                }
+
+                var stageEntranceIds = results.Select(r => r.StageEntrance.Id).Distinct();
+
+                var allPartNumbers = await _context.StageEntrancePartNumbers
+                    .Where(pn => stageEntranceIds.Contains(pn.StageEntranceId))
+                    .Select(pn => new
+                    {
+                        pn.StageEntranceId,
+                        pn.PartNumber,
+                        pn.Quantity
+                    })
+                    .ToListAsync();
 
                 var groupedResults = results
-                        .SelectMany(se => se.PartNumber.Split(',')
-                            .Select(pn => new
-                            {
-                                PartNumber = pn.Trim(),
-                                se.Id,
-                                se.Folio,
-                                se.Platforms,
-                                se.NumberOfPieces,
-                                se.EntryDate,
-                                se.ExitDate
-                            }))
-                        .Where(x => x.PartNumber.Contains(partNumber))
-                        .GroupBy(x => x.PartNumber)
-                        .Select(g => new
+                    .GroupBy(r => r.PartNumber)
+                    .Select(g => new
+                    {
+                        PartNumber = g.Key,
+                        Folios = g.Select(x => new
                         {
-                            PartNumber = g.Key,
-                            Folios = g.Select(x => new
-                            {
-                                x.Folio,
-                                x.PartNumber,
-                                x.NumberOfPieces,
-                                x.EntryDate,
-                                x.ExitDate
-                            }).ToList(),
-                            TotalPlatforms = g.Sum(x => x.Platforms ?? 0),
-                            TotalPieces = g.Sum(x => x.NumberOfPieces ?? 0)
-                        })
-                        .ToList();
+                            Folio = x.StageEntrance.Folio,
+                            PartNumber = x.PartNumber,
+                            Platforms = x.StageEntrance.Platforms,
+                            TotalPieces = x.StageEntrance.TotalPieces,
+                            EntryDate = x.StageEntrance.EntryDate,
+                            ExitDate = x.StageEntrance.ExitDate,
+                            PartNumbers = allPartNumbers
+                                .Where(pn => pn.StageEntranceId == x.StageEntrance.Id)
+                                .Select(pn => new { pn.PartNumber, pn.Quantity })
+                                .ToList()
+                        }).ToList(),
+                        TotalPlatforms = g.Sum(x => x.StageEntrance.Platforms ?? 0),
+                        TotalPieces = g.Sum(x => x.Quantity)
+                    })
+                    .ToList();
 
                 return Ok(groupedResults);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
+                Console.WriteLine($"Error en SearchByPartNumber: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+
                 return StatusCode(500, new
                 {
                     success = false,
@@ -179,7 +223,7 @@ namespace FTN.Controllers
                 {
                     Id = se.Id,
                     Folio = se.Folio,
-                    PartNumber = se.PartNumber,
+                    PartNumber = se.PartNumbers,
                     Pallets = se.Platforms ?? 0,
                     EntryDate = se.EntryDate ?? DateTime.MinValue,
                     ExitDate = se.ExitDate,
@@ -266,7 +310,7 @@ namespace FTN.Controllers
                 {
                     Id = se.Id,
                     Folio = se.Folio,
-                    PartNumber = se.PartNumber,
+                    PartNumber = se.PartNumbers,
                     Pallets = se.Platforms,
                     EntryDate = se.EntryDate ?? DateTime.MinValue,
                     ExitDate = se.ExitDate,
@@ -397,6 +441,114 @@ namespace FTN.Controllers
         }
 
         [HttpPost]
+        [Route("ProcessExits")]
+        public async Task<IActionResult> ProcessExits([FromBody] ProcessExitsDto request)
+        {
+            try
+            {
+                if (request?.ExitItem == null || !request.ExitItem.Any())
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "No se proporcionaron items para procesar"
+                    });
+                }
+
+                var results = new List<ExitProcessingResult>();
+                var exitDate = DateTime.Now;
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+
+                try
+                {
+                    var folios = request.ExitItem.Select(e => e.Folio).Distinct().ToList();
+
+                    var stageEntrances = await _context.StageEntrances
+                        .Where(se => folios.Contains(se.Folio!.Value) && se.Platforms > 0)
+                        .Select(se => new { se.Id, se.Folio, se.Platforms })
+                        .ToListAsync();
+
+                    foreach (var exitItem in request.ExitItem)
+                    {
+                        var stageEntrance = stageEntrances.FirstOrDefault(se => se.Folio == exitItem.Folio);
+
+                        if (stageEntrance == null)
+                        {
+                            results.Add(new ExitProcessingResult
+                            {
+                                Folio = exitItem.Folio.ToString(),
+                                Success = false,
+                                Message = $"Folio no encontrado o sin tarimas disponibles"
+                            });
+                            continue;
+                        }
+
+                        if (exitItem.Quantity > stageEntrance.Platforms)
+                        {
+                            results.Add(new ExitProcessingResult
+                            {
+                                Folio = exitItem.Folio.ToString(),
+                                Success = false,
+                                Message = $"Cantidad solicitada ({exitItem.Quantity}) excede las tarimas disponibles ({stageEntrance.Platforms})"
+                            });
+                            continue;
+                        }
+
+                        var previousPlatforms = stageEntrance.Platforms ?? 0;
+
+                        var updateResult = await _context.StageEntrances
+                            .Where(se => se.Id == stageEntrance.Id)
+                            .ExecuteUpdateAsync(setters => setters
+                                .SetProperty(se => se.Platforms, se => se.Platforms - exitItem.Quantity)
+                                .SetProperty(se => se.ExitDate, exitDate)
+                                .SetProperty(se => se.UpdatedAt, DateTime.Now)
+                            );
+
+                        var currentPlatforms = previousPlatforms - exitItem.Quantity;
+
+                        results.Add(new ExitProcessingResult
+                        {
+                            Folio = exitItem.Folio.ToString(),
+                            Success = true,
+                            Message = $"Salida procesada: {exitItem.Quantity} tarimas",
+                            PreviousPlatforms = previousPlatforms,
+                            CurrentPlatforms = currentPlatforms
+                        });
+                    }
+
+                    await transaction.CommitAsync();
+
+                    var successfulExits = results.Count(r => r.Success);
+                    var failedExits = results.Count(r => !r.Success);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Procesamiento completado: {successfulExits} exitosos, {failedExits} fallidos",
+                        results = results,
+                        exitDate = exitDate
+                    });
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    throw new Exception("Error durante el procesamiento de salidas", ex);
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error al procesar las salidas",
+                    detalles = ex.Message
+                });
+            }
+        }
+
+
+        [HttpPost]
         [Route("Create")]
         public async Task<IActionResult> Create([FromBody] StageEntrancesDto request)
         {
@@ -419,33 +571,71 @@ namespace FTN.Controllers
 
             try
             {
+                using var transaction = await _context.Database.BeginTransactionAsync();
+
+                var folioExists = await _context.StageEntrances
+                    .AnyAsync(se => se.Folio == request.Folio);
+
+                if (folioExists)
+                {
+                    return BadRequest(new
+                    {
+                        Success = false,
+                        Message = "El folio ya existe"
+                    });
+                }
+
+                var totalPieces = request.PartNumbers.Sum(pn => pn.Quantity);
+
                 var newStageEntrance = new StageEntrances
                 {
                     Folio = request.Folio,
-                    PartNumber = request.PartNumber,
+                    TotalPieces = totalPieces,
                     Platforms = 1,
-                    NumberOfPieces = request.NumberOfPieces,
                     IdStorageCost = 1,
                     IdEntranceFee = 1,
                     EntryDate = request.EntryDate,
-                    ExitDate = null, 
+                    ExitDate = null,
+                    CreatedAt = DateTime.Now
                 };
 
                 _context.StageEntrances.Add(newStageEntrance);
                 await _context.SaveChangesAsync();
 
+                var partNumbers = request.PartNumbers.Select(pn => new StageEntrancePartNumbers
+                {
+                    StageEntranceId = newStageEntrance.Id,
+                    PartNumber = pn.PartNumber.Trim(),
+                    Quantity = pn.Quantity,
+                    CreateAt = DateTime.Now
+                }).ToList();
+
+                await _context.StageEntrancePartNumbers.AddRangeAsync(partNumbers);
+                await _context.SaveChangesAsync();
+
+                await transaction.CommitAsync();
+
                 return Ok(new
                 {
-                    Succes = true,
-                    Message = "Registro creado",
+                    Success = true,
+                    Message = "Registro creado exitosamente",
                     IdStageEntrances = newStageEntrance.Id
                 });
             }
-            catch(Exception ex)
+            catch (DbUpdateException dbEx)
             {
                 return StatusCode(500, new
                 {
-                    Succees = false,
+                    Success = false,
+                    Message = "Error de base de datos",
+                    Detail = dbEx.InnerException?.Message ?? dbEx.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    Success = false,
                     Message = "Error interno del servidor",
                     Detail = ex.Message
                 });
@@ -475,20 +665,50 @@ namespace FTN.Controllers
 
             try
             {
-                var stageEntrance = await _context.StageEntrances.FindAsync(id);
+                using var transaction = await _context.Database.BeginTransactionAsync();
 
-                if(stageEntrance == null)
+                var stageEntrance = await _context.StageEntrances
+                    .FirstOrDefaultAsync(se => se.Id == id);
+
+                if (stageEntrance == null)
                 {
-                    return NotFound("Id no encontrado");
+                    return NotFound("Registro no encontrado");
+                }
+
+                var folioExists = await _context.StageEntrances
+                    .AnyAsync(se => se.Folio == request.Folio && se.Id != id);
+
+                if (folioExists)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "El folio ya existe en otro registro"
+                    });
                 }
 
                 stageEntrance.Folio = request.Folio;
-                stageEntrance.PartNumber = request.PartNumber;
-                stageEntrance.NumberOfPieces = request.NumberOfPieces;
+                stageEntrance.TotalPieces = request.PartNumbers.Sum(pn => pn.Quantity);
                 stageEntrance.EntryDate = request.EntryDate;
                 stageEntrance.UpdatedAt = DateTime.Now;
 
+                var existingPartNumbers = await _context.StageEntrancePartNumbers
+                    .Where(pn => pn.StageEntranceId == id)
+                    .ToListAsync();
+
+                _context.StageEntrancePartNumbers.RemoveRange(existingPartNumbers);
+
+                var newPartNumbers = request.PartNumbers.Select(pn => new StageEntrancePartNumbers
+                {
+                    StageEntranceId = stageEntrance.Id,
+                    PartNumber = pn.PartNumber.Trim(),
+                    Quantity = pn.Quantity,
+                    CreateAt = DateTime.Now
+                }).ToList();
+
+                await _context.StageEntrancePartNumbers.AddRangeAsync(newPartNumbers);
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
 
                 return Ok(new
                 {
@@ -497,12 +717,13 @@ namespace FTN.Controllers
                     IdModified = stageEntrance.Id
                 });
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Error interno del servidor"
+                    message = "Error interno del servidor",
+                    detail = ex.Message
                 });
             }
         }
@@ -511,29 +732,35 @@ namespace FTN.Controllers
         [Route("UpdateExits/{id}")]
         public async Task<IActionResult> UpdateExits([FromBody] StageExitsDto request, int id)
         {
-            var stageEntrance = await _context.StageEntrances.FindAsync(id);
+            var stageEntrance = await _context.StageEntrances
+                .Where(se => se.Id == id)
+                .Select(se => new { se.Platforms })
+                .FirstOrDefaultAsync();
 
-            if(stageEntrance == null)
+            if (stageEntrance == null)
             {
                 return NotFound("Registro no encontrado");
             }
 
-            if(request.Platforms > stageEntrance.Platforms)
+            if (request.Platforms > stageEntrance.Platforms)
             {
                 return BadRequest("El nuevo valor no puede ser mayor al anterior");
             }
 
-            stageEntrance.Platforms = request.Platforms;
-            stageEntrance.ExitDate = request.ExitDate;
-
-            await _context.SaveChangesAsync();
+            await _context.StageEntrances
+                .Where(se => se.Id == id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(se => se.Platforms, request.Platforms)
+                    .SetProperty(se => se.ExitDate, request.ExitDate)
+                    .SetProperty(se => se.UpdatedAt, DateTime.Now)
+                );
 
             return Ok(new
             {
                 success = true,
-                message = "Registro de salida creado"
+                message = "Registro de salida actualizado"
             });
-        } 
+        }
 
         [HttpDelete]
         [Route("Delete/{id}")]
