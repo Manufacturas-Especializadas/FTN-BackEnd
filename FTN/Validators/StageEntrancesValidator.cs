@@ -10,7 +10,7 @@ namespace FTN.Validators
             RuleFor(x => x.Folio)
                 .NotEmpty().WithMessage("El folio es obligatorio");
 
-            RuleFor(x => x.PartNumber)
+            RuleFor(x => x.PartNumbers)
                 .NotEmpty().WithMessage("El número de parte es obligatorio");
 
             RuleFor(x => x.Platforms)

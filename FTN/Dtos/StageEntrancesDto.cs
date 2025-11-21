@@ -4,10 +4,8 @@
     {
         public int? Folio { get; set; }
 
-        public string PartNumber { get; set; }
-
-        public int? NumberOfPieces { get; set; }
-
         public DateTime? EntryDate { get; set; }
+
+        public List<PartNumberDto> PartNumbers { get; set; } = new List<PartNumberDto>();
     }
 }
