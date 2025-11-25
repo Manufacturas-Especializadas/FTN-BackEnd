@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using DocumentFormat.OpenXml.Math;
+using FluentValidation;
 using FTN.Dtos;
 using FTN.Models;
 using FTN.Services;
@@ -170,6 +171,99 @@ namespace FTN.Controllers
                     success = false,
                     message = "Error al buscar por número de parte",
                     detalles = ex.Message
+                });
+            }
+        }
+
+        [HttpGet]
+        [Route("SearchByFolio/{folio}")]
+        public async Task<IActionResult> SearchByFolio(int folio)
+        {
+            try
+            {
+                var query = from se in _context.StageEntrances
+                            where se.Folio == folio
+                            select new
+                            {
+                                StageEntrances = new
+                                {
+                                    se.Id,
+                                    se.Folio,
+                                    se.Platforms,
+                                    se.TotalPieces,
+                                    se.EntryDate,
+                                    se.ExitDate
+                                }
+                            };
+
+                var results = await query.ToListAsync();
+
+                if (!results.Any())
+                {
+                    return Ok(new List<object>());
+                }
+
+                var stageEntranceIds = results.Select(r => r.StageEntrances.Id).Distinct();
+
+                var allPartNumbers = await _context.StageEntrancePartNumbers
+                        .Where(pn => stageEntranceIds.Contains(pn.StageEntranceId))
+                        .Select(pn => new
+                        {
+                            pn.StageEntranceId,
+                            pn.PartNumber,
+                            pn.Quantity
+                        })
+                        .ToListAsync();
+
+                var groupedResults = results
+                        .GroupBy(r => r.StageEntrances.Folio)
+                        .Select(g => new
+                        {
+                            Folio = g.Key,
+                            Entrances = g.Select(x => new
+                            {
+                                Folio = x.StageEntrances.Folio,
+                                Platforms = x.StageEntrances.Platforms,
+                                TotalPieces = x.StageEntrances.TotalPieces,
+                                EntryDate = x.StageEntrances.EntryDate,
+                                ExitDate = x.StageEntrances.ExitDate,
+                                PartNumbers = allPartNumbers
+                                        .Where(pn => pn.StageEntranceId == x.StageEntrances.Id)
+                                        .Select(pn => new { pn.PartNumber, pn.Quantity })
+                                        .ToList()
+                            }).ToList(),
+                            TotalPlatforms = g.Sum(x => x.StageEntrances.Platforms ?? 0),
+                            TotalPieces = g.Sum(x => x.StageEntrances.TotalPieces ?? 0)
+                        }).ToList();
+
+                var allActivePartNumbers = await _context.StageEntrancePartNumbers
+                   .Where(pn => _context.StageEntrances
+                       .Where(se => se.ExitDate == null && se.Platforms > 0)
+                       .Select(se => se.Id)
+                       .Contains(pn.StageEntranceId))
+                   .GroupBy(pn => pn.PartNumber)
+                   .Select(g => new
+                   {
+                       PartNumber = g.Key,
+                       TotalQuantity = g.Sum(pn => pn.Quantity)
+                   })
+                   .ToListAsync();
+
+                var response = new
+                {
+                    FolioResults = groupedResults,
+                    AccumulatedPartNumbers = allActivePartNumbers
+                };
+
+                return Ok(response);
+            }
+            catch(Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error al buscar por folio",
+                    details = ex.Message
                 });
             }
         }
