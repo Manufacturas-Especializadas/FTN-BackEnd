@@ -454,7 +454,15 @@ namespace FTN.Controllers
 
                     var stageEntrances = await _context.StageEntrances
                         .Where(se => folios.Contains(se.Folio!.Value) && se.Platforms > 0)
-                        .Select(se => new { se.Id, se.Folio, se.Platforms })
+                        .Include(se => se.StageEntrancePartNumbers)
+                        .Select(se => new
+                        {
+                            se.Id,
+                            se.Folio,
+                            se.Platforms,
+                            se.TotalPieces,
+                            PartNumbers = se.StageEntrancePartNumbers.ToList()
+                        })
                         .ToListAsync();
 
                     foreach (var exitItem in request.ExitItem)
@@ -485,13 +493,42 @@ namespace FTN.Controllers
 
                         var previousPlatforms = stageEntrance.Platforms ?? 0;
 
+                        var piecesPerPlatform = stageEntrance.TotalPieces.HasValue && stageEntrance.Platforms.HasValue && stageEntrance.Platforms.Value > 0
+                            ? (double)stageEntrance.TotalPieces.Value / stageEntrance.Platforms.Value
+                            : 0;
+
+                        var piecesToDeduct = (int)Math.Round(piecesPerPlatform * exitItem.Quantity);
+
                         var updateResult = await _context.StageEntrances
                             .Where(se => se.Id == stageEntrance.Id)
                             .ExecuteUpdateAsync(setters => setters
                                 .SetProperty(se => se.Platforms, se => se.Platforms - exitItem.Quantity)
+                                .SetProperty(se => se.TotalPieces, se => se.TotalPieces - piecesToDeduct)
                                 .SetProperty(se => se.ExitDate, exitDate)
                                 .SetProperty(se => se.UpdatedAt, DateTime.Now)
                             );
+
+                        if (stageEntrance.PartNumbers.Any() && piecesToDeduct > 0)
+                        {
+                            var totalOriginalPieces = stageEntrance.PartNumbers.Sum(pn => pn.Quantity);
+
+                            foreach (var partNumber in stageEntrance.PartNumbers)
+                            {
+                                var proportion = (double)partNumber.Quantity / totalOriginalPieces;
+                                var piecesToDeductFromPart = (int)Math.Round(piecesToDeduct * proportion);
+
+                                piecesToDeductFromPart = Math.Min(piecesToDeductFromPart, partNumber.Quantity);
+
+                                if (piecesToDeductFromPart > 0)
+                                {
+                                    await _context.StageEntrancePartNumbers
+                                        .Where(pn => pn.Id == partNumber.Id)
+                                        .ExecuteUpdateAsync(setters => setters
+                                            .SetProperty(pn => pn.Quantity, pn => pn.Quantity - piecesToDeductFromPart)
+                                        );
+                                }
+                            }
+                        }
 
                         var currentPlatforms = previousPlatforms - exitItem.Quantity;
 
@@ -499,9 +536,9 @@ namespace FTN.Controllers
                         {
                             Folio = exitItem.Folio.ToString(),
                             Success = true,
-                            Message = $"Salida procesada: {exitItem.Quantity} tarimas",
+                            Message = $"Salida procesada: {exitItem.Quantity} tarimas y {piecesToDeduct} piezas",
                             PreviousPlatforms = previousPlatforms,
-                            CurrentPlatforms = currentPlatforms
+                            CurrentPlatforms = currentPlatforms,
                         });
                     }
 
