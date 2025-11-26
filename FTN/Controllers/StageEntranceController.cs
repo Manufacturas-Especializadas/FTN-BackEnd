@@ -1,5 +1,6 @@
 ﻿using DocumentFormat.OpenXml.Math;
 using FluentValidation;
+using FTN.Data;
 using FTN.Dtos;
 using FTN.Models;
 using FTN.Services;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query.Internal;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Reflection.Metadata.Ecma335;
 using static FTN.Services.ExcelReportService;
@@ -24,7 +26,7 @@ namespace FTN.Controllers
         private readonly IExcelReportService _excelReportService;
 
         public StageEntranceController(
-            AppDbContext context, 
+            AppDbContext context,
             IValidator<StageEntrancesDto> validator,
             IExcelReportService excelReportService
         )
@@ -85,7 +87,7 @@ namespace FTN.Controllers
                     })
                     .FirstOrDefaultAsync();
 
-            if(stageEntrance == null)
+            if (stageEntrance == null)
             {
                 return NotFound(new { message = "Registro no encontrado" });
             }
@@ -257,7 +259,7 @@ namespace FTN.Controllers
 
                 return Ok(response);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(500, new
                 {
@@ -269,269 +271,79 @@ namespace FTN.Controllers
         }
 
         [HttpGet]
-        [Route("MonthlyReport/{year}/{month}")]
-        public async Task<IActionResult> GetMonthlyReport(int year, int month)
+        [Route("Available-Reports")]
+        public async Task<IActionResult> GetAvailableReports()
         {
             try
             {
-                if(month < 1 || month > 12)
-                {
-                    return BadRequest(new { message = "El mes debe se entre 1 y 12" });
-                }
-
-                if(year < 2000 || year > 2100)
-                {
-                    return BadRequest(new { message = "El año debe ser entre los 2000 y 2100" });
-                }
-
-                var startDate = new DateTime(year, month, 1);
-                var endDate = startDate.AddMonths(1).AddDays(-1);
-
-                var monthlyRecords = await _context.StageEntrances
-                        .Where(se => se.EntryDate >= startDate && se.EntryDate <= endDate)
-                        .Include(se => se.IdEntranceFeeNavigation)
-                        .Include(se => se.IdStorageCostNavigation)
-                        .AsNoTracking()
-                        .ToListAsync();
-
-                if (!monthlyRecords.Any())
-                {
-                    return Ok(new MonthlyReportResponseDto
+                var reports = await _context.StageEntrances
+                    .Where(r => r.CreatedAt != null)
+                    .Select(r => new
                     {
-                        Year = year,
-                        Month = month,
-                        MonthName = GetMonthName(month),
-                        TotalRecords = 0,
-                        TotalPallets = 0,
-                        ActiveRecords = 0,
-                        CompletedRecords = 0,
-                        TotalEntryCost = 0,
-                        TotalExitCost = 0,
-                        TotalStorageCost = 0,
-                        TotalGeneralCost = 0,
-                        Records = new List<RecordDetailDto>()
-                    });
-                }
+                        Year = r.CreatedAt.Value.Year,
+                        Month = r.CreatedAt!.Value.Month
+                    })
+                    .Distinct()
+                    .OrderByDescending(x => x.Year)
+                    .ThenByDescending(x => x.Month)
+                    .ToListAsync();
 
-                var recordsWithMetrics = monthlyRecords.Select(se => new RecordDetailDto
+                var result = reports.Select(r => new
                 {
-                    Id = se.Id,
-                    Folio = se.Folio,
-                    PartNumber = se.PartNumbers,
-                    Pallets = se.Platforms ?? 0,
-                    EntryDate = se.EntryDate ?? DateTime.MinValue,
-                    ExitDate = se.ExitDate,
-                    DaysInStorage = CalculateDaysInStorage(se.EntryDate, se.ExitDate),
-                    EntryCost = se.IdEntranceFeeNavigation?.Cost ?? 67.50m,
-                    ExitCost = se.ExitDate.HasValue ? (se.IdEntranceFeeNavigation?.Cost ?? 67.50m) : 0,
-                    StorageCost = CalculateStorageCost(
-                        se.EntryDate,
-                        se.ExitDate,
-                        se.IdStorageCostNavigation?.Cost ?? 133,
-                        se.Platforms ?? 0
-                    ),
-                    TotalCost = CalculateTotalCost(
-                        se.IdEntranceFeeNavigation?.Cost ?? 67.50m,
-                        se.ExitDate.HasValue ? (se.IdEntranceFeeNavigation?.Cost ?? 67.50m) : 0,
-                        se.EntryDate,
-                        se.ExitDate,
-                        se.IdStorageCostNavigation?.Cost ?? 133,
-                        se.Platforms ?? 0
-                    )
-                }).ToList();
-
-                var report = new MonthlyReportResponseDto
-                {
-                    Year = year,
-                    Month = month,
-                    MonthName = GetMonthName(month),
-                    TotalRecords = recordsWithMetrics.Count,
-                    TotalPallets = recordsWithMetrics.Sum(r => r.Pallets.Value),
-                    ActiveRecords = recordsWithMetrics.Count(r => !r.ExitDate.HasValue),
-                    CompletedRecords = recordsWithMetrics.Count(r => r.ExitDate.HasValue),
-                    TotalEntryCost = recordsWithMetrics.Sum(r => r.EntryCost),
-                    TotalExitCost = recordsWithMetrics.Sum(r => r.ExitCost),
-                    TotalStorageCost = recordsWithMetrics.Sum(r => r.StorageCost),
-                    TotalGeneralCost = recordsWithMetrics.Sum(r => r.TotalCost),
-                    Records = recordsWithMetrics
-                };
-
-                return Ok(report);
-            }
-            catch(Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Error al generar el reporte mensual",
-                    detalles = ex.Message
+                    year = r.Year,
+                    month = r.Month,
+                    monthName = new DateTime(r.Year, r.Month, 1)
+                        .ToString("MMMM", new CultureInfo("es-MX"))
+                        .ToUpper()[0] +
+                        new DateTime(r.Year, r.Month, 1)
+                        .ToString("MMMM", new CultureInfo("es-MX"))
+                        .Substring(1)
                 });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error obteniendo reportes", details = ex.Message });
             }
         }
 
+
         [HttpGet]
-        [Route("MonthlyReportExcel/{year}/{month}")]
-        public async Task<IActionResult> DownloadMonthlyReportExcel(int year, int month)
+        [Route("DownloadMonthlyReport/{year}/{month}")]
+        public async Task<IActionResult> DownloadMonthlyReport(int year, int month)
         {
             try
             {
-                if(month < 1 || month > 12)
+                var result = await GetMonthlyReports(year, month);
+
+                if (result is OkObjectResult okResult && okResult.Value != null)
                 {
-                    return BadRequest(new { message = "El mes debe ser entre 1 y 12" });
+                    var reportData = okResult.Value;
+
+                    var excelBytes = _excelReportService.GenerateMonthlyReport(reportData);
+
+                    var monthName = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month);
+                    var fileName = $"Reporte_Mensual_{monthName}_{year}.xlsx";
+
+                    return File(excelBytes,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        fileName);
                 }
-
-                if(year < 2000 || year > 2100)
+                else
                 {
-                    return BadRequest(new { message = "El año debe estar entre los 2000 y 2100" });
+                    return NotFound(new { message = "No se encontraron datos para el reporte" });
                 }
-
-                var startDate = new DateTime(year, month, 1);
-                var endDate = startDate.AddMonths(1).AddDays(-1);
-
-                var monthlyRecords = await _context.StageEntrances
-                        .Where(se => se.EntryDate >= startDate && se.EntryDate <= endDate)
-                        .Include(se => se.IdEntranceFeeNavigation)
-                        .Include(se => se.IdStorageCostNavigation)
-                        .AsNoTracking()
-                        .ToListAsync();
-
-                if (!monthlyRecords.Any())
-                {
-                    return NotFound(new { message = "No se encontraron registros para el período especificado" });
-                }
-
-                var recordsWithMetrics = monthlyRecords.Select(se => new RecordDetailDto
-                {
-                    Id = se.Id,
-                    Folio = se.Folio,
-                    PartNumber = se.PartNumbers,
-                    Pallets = se.Platforms,
-                    EntryDate = se.EntryDate ?? DateTime.MinValue,
-                    ExitDate = se.ExitDate,
-                    DaysInStorage = CalculateDaysInStorage(se.EntryDate, se.ExitDate),
-                    EntryCost = se.IdEntranceFeeNavigation?.Cost ?? 67.50m,
-                    ExitCost = se.ExitDate.HasValue ? (se.IdEntranceFeeNavigation?.Cost ?? 67.50m) : 0,
-                    StorageCost = CalculateStorageCost(
-                        se.EntryDate,
-                        se.ExitDate,
-                        se.IdStorageCostNavigation?.Cost ?? 133,
-                        se.Platforms ?? 0
-                    ),
-                    TotalCost = CalculateTotalCost(
-                        se.IdEntranceFeeNavigation?.Cost ?? 67.50m,
-                        se.ExitDate.HasValue ? (se.IdEntranceFeeNavigation?.Cost ?? 67.50m) : 0,
-                        se.ExitDate,
-                        se.ExitDate,
-                        se.IdStorageCostNavigation?.Cost ?? 133,
-                        se.Platforms ?? 0
-                    )
-                }).ToList();
-
-                var reportData = new MonthlyReportResponseDto
-                {
-                    Year = year,
-                    Month = month,
-                    MonthName = GetMonthName(month),
-                    TotalRecords = recordsWithMetrics.Count,
-                    TotalPallets = recordsWithMetrics.Sum(r => r.Pallets.Value),
-                    ActiveRecords = recordsWithMetrics.Count(r => !r.ExitDate.HasValue),
-                    CompletedRecords = recordsWithMetrics.Count(r => r.ExitDate.HasValue),
-                    TotalEntryCost = recordsWithMetrics.Sum(r => r.EntryCost),
-                    TotalExitCost = recordsWithMetrics.Sum(r => r.ExitCost),
-                    TotalStorageCost = recordsWithMetrics.Sum(r => r.StorageCost),
-                    TotalGeneralCost = recordsWithMetrics.Sum(r => r.TotalCost),
-                    Records = recordsWithMetrics
-                };
-
-                var excelBytes = _excelReportService.GenerateMonthlyReport(reportData);
-
-                var fileName = $"Reporte_{reportData.MonthName}_{reportData.Year}.xlsx";
-
-                return File(excelBytes,
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    fileName);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Error al generar el reporte de excel",
-                    detalles = ex.Message
+                    message = "Error al generar el archivo Excel",
+                    details = ex.Message
                 });
             }
-        }
-
-        [HttpGet]
-        [Route("AvailableYears")]
-        public async Task<IActionResult> GetAvailableYear()
-        {
-            try
-            {
-                var years = await _context.StageEntrances
-                        .Where(se => se.EntryDate.HasValue)
-                        .Select(se => se.EntryDate.Value.Year)
-                        .Distinct()
-                        .OrderByDescending(year => year)
-                        .ToListAsync();
-
-                return Ok(years);
-            }
-            catch(Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Error al obtener los años disponibles",
-                    detalles = ex.Message
-                });
-            }
-        }
-
-        private int CalculateDaysInStorage(DateTime? entryDate, DateTime? exitDate)
-        {
-            if(!entryDate.HasValue) return 0;
-
-            var exitDateTime = exitDate ?? DateTime.Now;
-            var diff = exitDateTime - entryDate.Value;
-
-            return (int)Math.Ceiling(diff.TotalDays);
-        }
-
-        private decimal CalculateStorageCost(DateTime? entryDate, DateTime? exitDate, int? dailyCost, int pallets)
-        {
-            if(!entryDate.HasValue || dailyCost == null ) return 0;
-
-            var days = CalculateDaysInStorage(entryDate, exitDate);
-
-            return days * (dailyCost.Value * pallets);
-        }
-
-        private decimal CalculateTotalCost(decimal entryCost, decimal exitCost, DateTime? entryDate, DateTime? exitDate, int? dailyCost, int pallets)
-        {
-            var storageCost = CalculateStorageCost(entryDate, exitDate, dailyCost, pallets);
-
-            return entryCost + exitCost + storageCost;
-        }
-
-        private string GetMonthName(int month)
-        {
-            return month switch
-            {
-                1 => "Enero",
-                2 => "Febrero",
-                3 => "Marzo",
-                4 => "Abril",
-                5 => "Mayo",
-                6 => "Junio",
-                7 => "Julio",
-                8 => "Agosto",
-                9 => "Septiembre",
-                10 => "Octubre",
-                11 => "Noviembre",
-                12 => "Diciembre",
-                _ => "Mes invalido"
-            };
         }
 
         [HttpPost]
@@ -862,7 +674,7 @@ namespace FTN.Controllers
         {
             var IdStageEntrance = await _context.StageEntrances.FindAsync(id);
 
-            if(IdStageEntrance == null)
+            if (IdStageEntrance == null)
             {
                 return NotFound("Id no encontrado");
             }
@@ -875,6 +687,150 @@ namespace FTN.Controllers
                 success = true,
                 message = "Registro eliminado"
             });
+        }
+
+        private async Task<IActionResult> GetMonthlyReports(int year, int month)
+        {
+            try
+            {
+                if (month < 1 || month > 12)
+                {
+                    return BadRequest(new
+                    {
+                        succes = false,
+                        message = "El mes debe estar entre 1 y 12"
+                    });
+                }
+
+                var startDate = new DateTime(year, month, 1);
+                var endDate = startDate.AddMonths(1).AddDays(-1);
+
+                var monthlyData = await _context.StageEntrances
+                        .Where(se => se.EntryDate.HasValue &&
+                                    se.EntryDate.Value.Year == year &&
+                                    se.EntryDate.Value.Month == month)
+                        .Include(se => se.StageEntrancePartNumbers)
+                        .OrderBy(se => se.EntryDate)
+                        .Select(se => new
+                        {
+                            se.Id,
+                            se.Folio,
+                            se.Platforms,
+                            se.TotalPieces,
+                            se.EntryDate,
+                            se.ExitDate,
+                            PartNumbers = se.StageEntrancePartNumbers
+                                .Select(pn => new { pn.PartNumber, pn.Quantity })
+                                .ToList(),
+                            EntranceCost = 67.50m,
+                            ExitCost = 67.50m,
+                            StorageCost = 133.00m
+                        })
+                        .ToListAsync();
+
+                if (!monthlyData.Any())
+                {
+                    return Ok(new
+                    {
+                        Year = year,
+                        Month = month,
+                        MonthName = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month),
+                        TotalRecords = 0,
+                        TotalPallets = 0,
+                        ActiveRecords = 0,
+                        CompleteRecords = 0,
+                        TotalEntranceCost = 0m,
+                        TotalExitCost = 0m,
+                        TotalStorageCost = 0m,
+                        TotalGeneralCost = 0m,
+                        Records = new List<object>()
+                    });
+                }
+
+                var records = new List<MonthlyReportRecord>();
+                var totalEntranceCost = 0m;
+                var totalExitCost = 0m;
+                var totalStorageCost = 0m;
+
+                foreach (var record in monthlyData)
+                {
+                    var daysInStorage = CalculateDaysInStorage(record.EntryDate, record.ExitDate);
+
+                    var entranceCost = record.EntranceCost;
+                    totalEntranceCost += entranceCost;
+
+                    var exitCost = record.ExitDate.HasValue ? record.ExitCost : 0m;
+                    totalExitCost += exitCost;
+
+                    var storageCost = 0m;
+
+                    if (!record.ExitDate.HasValue && DateTime.Now >= endDate)
+                    {
+                        storageCost = record.StorageCost;
+                        totalStorageCost += storageCost;
+                    }
+
+                    var totalCost = entranceCost + exitCost + storageCost;
+
+                    records.Add(new MonthlyReportRecord
+                    {
+                        Id = record.Id,
+                        Folio = record.Folio ?? 0,
+                        PartNumbers = string.Join(", ", record.PartNumbers.Select(pn => $"{pn.PartNumber}({pn.Quantity})")),
+                        Pallets = record.Platforms ?? 0,
+                        EntryDate = record.EntryDate?.ToString("dd-MM-yyyy") ?? "N/A",
+                        ExitDate = record.ExitDate?.ToString("dd-MM-yyyy") ?? "Sin salir",
+                        DaysInStorage = daysInStorage,
+                        EntranceCost = entranceCost,
+                        ExitCost = exitCost,
+                        StorageCost = storageCost,
+                        TotalCost = totalCost,
+                    });
+                }
+
+                var totalRecords = monthlyData.Count;
+                var totalPallets = monthlyData.Sum(x => x.Platforms ?? 0);
+                var activeRecords = monthlyData.Count(x => !x.ExitDate.HasValue);
+                var completedRecords = monthlyData.Count(x => x.ExitDate.HasValue);
+                var totalGeneralCost = totalEntranceCost + totalExitCost + totalStorageCost;
+
+                var response = new
+                {
+                    Year = year,
+                    Month = month,
+                    MonthName = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month),
+                    TotalRecords = totalRecords,
+                    TotalPallets = totalPallets,
+                    ActiveRecords = activeRecords,
+                    CompleteRecords = completedRecords,
+                    TotalEntranceCost = totalEntranceCost,
+                    TotalExitCost = totalExitCost,
+                    TotalStorageCost = totalStorageCost,
+                    TotalGeneralCost = totalGeneralCost,
+                    Records = records
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error al generar el reporte mensual",
+                    details = ex.Message
+                });
+            }
+        }
+
+        private int CalculateDaysInStorage(DateTime? entryDate, DateTime? exitDate)
+        {
+            if (!entryDate.HasValue) return 0;
+
+            var exitDateTime = exitDate ?? DateTime.Now;
+            var diff = exitDateTime - entryDate.Value;
+
+            return (int)Math.Ceiling(diff.TotalDays);
         }
     }
 }

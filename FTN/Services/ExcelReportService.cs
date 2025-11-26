@@ -1,24 +1,20 @@
 ﻿using ClosedXML.Excel;
-using DocumentFormat.OpenXml.Drawing;
 using FTN.Dtos;
 
 namespace FTN.Services
 {
     public interface IExcelReportService
     {
-        byte[] GenerateMonthlyReport(MonthlyReportResponseDto reportData);
+        byte[] GenerateMonthlyReport(dynamic reportData);
     }
 
     public class ExcelReportService : IExcelReportService
     {
-        public byte[] GenerateMonthlyReport(MonthlyReportResponseDto reportData)
+        public byte[] GenerateMonthlyReport(dynamic reportData)
         {
             using (var workbook = new XLWorkbook())
             {
-                var summaryWorkSheet = workbook.Worksheets.Add("Summary");
-                GenerateSummarySheet(summaryWorkSheet, reportData);
-
-                var detailsWorksheet = workbook.Worksheets.Add("Detailed Records");
+                var detailsWorksheet = workbook.Worksheets.Add("Detalles por Folio");
                 GenerateDetailsSheet(detailsWorksheet, reportData);
 
                 using (var stream = new MemoryStream())
@@ -29,87 +25,61 @@ namespace FTN.Services
             }
         }
 
-        private void GenerateSummarySheet(IXLWorksheet worksheet, MonthlyReportResponseDto reportData)
+        private void GenerateDetailsSheet(IXLWorksheet worksheet, dynamic reportData)
         {
-            worksheet.Cell("A1").Value = $"REPORTE MENSUAL - {reportData.MonthName} {reportData.Year}";
-            worksheet.Cell("A1").Style.Font.Bold = true;
-            worksheet.Cell("A1").Style.Font.FontSize = 16;
-            worksheet.Cell("A1").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            worksheet.Range("A1:F1").Merge();
-
-            worksheet.Cell("A2").Value = $"Generado el: {DateTime.Now:dd-MM-yyyy HH:mm}";
-            worksheet.Cell("A2").Style.Font.Italic = true;
-            worksheet.Range("A2:F2").Merge();
-
-            worksheet.Cell("A4").Value = "RESUMEN";
-            worksheet.Cell("A4").Style.Font.Bold = true;
-            worksheet.Cell("A4").Style.Font.FontSize = 14;
-            worksheet.Cell("A4").Style.Fill.BackgroundColor = XLColor.LightGray;
-
-            var summaryData = new[]
-            {
-                new { Metric = "Registros totales", Value = reportData.TotalRecords.ToString() },
-                new { Metric = "Tarimas totales", Value = reportData.TotalPallets.ToString() },
-                new { Metric = "Registros activos", Value = reportData.ActiveRecords.ToString() },
-                new { Metric = "Registros completados", Value = reportData.CompletedRecords.ToString() },
-                new { Metric = "Costo total de entrada", Value = reportData.TotalEntryCost.ToString("C2") },
-                new { Metric = "Costo total de salida", Value = reportData.TotalExitCost.ToString("C2") },
-                new { Metric = "Costo total de almacenamiento", Value = reportData.TotalStorageCost.ToString("C2") },
-                new { Metric = "Costo general total", Value = reportData.TotalGeneralCost.ToString("C2") }
-            };
-
-            for (int i = 0; i < summaryData.Length; i++)
-            {
-                worksheet.Cell($"A{i + 5}").Value = summaryData[i].Metric;
-                worksheet.Cell($"B{i + 5}").Value = summaryData[i].Value;
-            }
-
-            var summaryRange = worksheet.Range("A4:B12");
-            summaryRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-            summaryRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-
-            worksheet.Columns().AdjustToContents();
-        }
-
-        private void GenerateDetailsSheet(IXLWorksheet worksheet, MonthlyReportResponseDto reportData)
-        {
-            worksheet.Cell("A1").Value = $"DETALLES {reportData.MonthName} - {reportData.Year}";
-            worksheet.Cell("A1").Style.Font.Bold = true;
-            worksheet.Cell("A1").Style.Font.FontSize = 16;
-            worksheet.Cell("A1").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            var titleCell = worksheet.Cell("A1");
+            titleCell.Value = $"REPORTE MENSUAL - {reportData.MonthName.ToUpper()} {reportData.Year}";
+            titleCell.Style.Font.Bold = true;
+            titleCell.Style.Font.FontSize = 16;
+            titleCell.Style.Font.FontColor = XLColor.White;
+            titleCell.Style.Fill.BackgroundColor = XLColor.DarkBlue;
+            titleCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             worksheet.Range("A1:L1").Merge();
+            worksheet.Row(1).Height = 30;
+
+            worksheet.Cell("A2").Value = $"Total Registros: {reportData.TotalRecords}";
+            worksheet.Cell("B2").Value = $"Total Tarimas: {reportData.TotalPallets}";
+            worksheet.Cell("C2").Value = $"Activos: {reportData.ActiveRecords}";
+            worksheet.Cell("D2").Value = $"Completados: {reportData.CompleteRecords}";
+            worksheet.Cell("E2").Value = $"Costo Total: ${reportData.TotalGeneralCost:N2}";
+
+            var summaryRange = worksheet.Range("A2:E2");
+            summaryRange.Style.Font.Bold = true;
+            summaryRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+            summaryRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            summaryRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
 
             var headers = new[]
             {
-        "ID", "Folio", "Número de parte", "Tarimas", "Fecha de entrada", "Fecha de salida",
-        "Dias en almacén", "Costo de entrada", "Costo de salida", "Costo de almacén",
-        "Costo total", "Estatus"
-    };
+                "ID", "Folio", "Números de Parte", "Tarimas", "Fecha Entrada",
+                "Fecha Salida", "Días en Almacén", "Costo Entrada", "Costo Salida",
+                "Costo Almacén", "Costo Total", "Estatus"
+            };
 
             for (int i = 0; i < headers.Length; i++)
             {
-                var cell = worksheet.Cell(3, i + 1);
+                var cell = worksheet.Cell(4, i + 1);
                 cell.Value = headers[i];
                 cell.Style.Font.Bold = true;
                 cell.Style.Fill.BackgroundColor = XLColor.LightBlue;
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             }
 
-            int row = 4;
+            int row = 5;
             foreach (var record in reportData.Records)
             {
                 worksheet.Cell(row, 1).Value = record.Id;
                 worksheet.Cell(row, 2).Value = record.Folio;
-                worksheet.Cell(row, 3).Value = record.PartNumber;
+                worksheet.Cell(row, 3).Value = record.PartNumbers;
                 worksheet.Cell(row, 4).Value = record.Pallets;
-                worksheet.Cell(row, 5).Value = record.EntryDate.ToString("dd-MM-yyyy HH:mm");
-                worksheet.Cell(row, 6).Value = record.ExitDate?.ToString("dd-MM-yyyy HH:mm") ?? "Pendiente";
+                worksheet.Cell(row, 5).Value = record.EntryDate;
+                worksheet.Cell(row, 6).Value = record.ExitDate;
                 worksheet.Cell(row, 7).Value = record.DaysInStorage;
-                worksheet.Cell(row, 8).Value = record.EntryCost;
+                worksheet.Cell(row, 8).Value = record.EntranceCost;
                 worksheet.Cell(row, 9).Value = record.ExitCost;
                 worksheet.Cell(row, 10).Value = record.StorageCost;
                 worksheet.Cell(row, 11).Value = record.TotalCost;
-                worksheet.Cell(row, 12).Value = record.Status;
 
                 for (int col = 8; col <= 11; col++)
                 {
@@ -117,30 +87,60 @@ namespace FTN.Services
                 }
 
                 var statusCell = worksheet.Cell(row, 12);
-                if (record.IsActive)
+                if (record.ExitDate == "Sin salir")
                 {
-                    statusCell.Style.Fill.BackgroundColor = XLColor.LightGreen;
+                    statusCell.Value = "ACTIVO";
+                    statusCell.Style.Fill.BackgroundColor = XLColor.LightYellow;
+                    statusCell.Style.Font.FontColor = XLColor.DarkOrange;
                 }
                 else
                 {
-                    statusCell.Style.Fill.BackgroundColor = XLColor.LightYellow;
+                    statusCell.Value = "COMPLETADO";
+                    statusCell.Style.Fill.BackgroundColor = XLColor.LightGreen;
+                    statusCell.Style.Font.FontColor = XLColor.DarkGreen;
+                }
+                statusCell.Style.Font.Bold = true;
+                statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+                if (row % 2 == 0)
+                {
+                    worksheet.Range($"A{row}:L{row}").Style.Fill.BackgroundColor = XLColor.LightGray;
                 }
 
                 row++;
             }
 
-            var dataRange = worksheet.Range($"A3:L{row - 1}");
+            var dataRange = worksheet.Range($"A4:L{row - 1}");
             dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
             dataRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
 
-            worksheet.SheetView.FreezeRows(3);
+            worksheet.SheetView.FreezeRows(4);
 
-            worksheet.Range($"A3:L{row - 1}").SetAutoFilter();
+            worksheet.Range($"A4:L{row - 1}").SetAutoFilter();
+
+            var daysColumn = worksheet.Range($"G5:G{row - 1}");
+            daysColumn.AddConditionalFormat().WhenGreaterThan(30).Fill.SetBackgroundColor(XLColor.LightSalmon);
+            daysColumn.AddConditionalFormat().WhenBetween(15, 30).Fill.SetBackgroundColor(XLColor.LightYellow);
 
             worksheet.Columns().AdjustToContents();
 
-            var daysColumn = worksheet.Range($"G4:G{row - 1}");
-            daysColumn.AddConditionalFormat().WhenGreaterThan(30).Fill.SetBackgroundColor(XLColor.LightSalmon);
+            worksheet.Cell($"A{row + 1}").Value = "TOTALES:";
+            worksheet.Cell($"A{row + 1}").Style.Font.Bold = true;
+            worksheet.Cell($"D{row + 1}").FormulaA1 = $"=SUBTOTAL(9,D5:D{row - 1})";
+            worksheet.Cell($"H{row + 1}").FormulaA1 = $"=SUBTOTAL(9,H5:H{row - 1})";
+            worksheet.Cell($"I{row + 1}").FormulaA1 = $"=SUBTOTAL(9,I5:I{row - 1})";
+            worksheet.Cell($"J{row + 1}").FormulaA1 = $"=SUBTOTAL(9,J5:J{row - 1})";
+            worksheet.Cell($"K{row + 1}").FormulaA1 = $"=SUBTOTAL(9,K5:K{row - 1})";
+
+            var totalRange = worksheet.Range($"A{row + 1}:L{row + 1}");
+            totalRange.Style.Fill.BackgroundColor = XLColor.DarkGray;
+            totalRange.Style.Font.FontColor = XLColor.White;
+            totalRange.Style.Font.Bold = true;
+
+            for (int col = 8; col <= 11; col++)
+            {
+                worksheet.Cell(row + 1, col).Style.NumberFormat.Format = "$#,##0.00";
+            }
         }
     }
 }
