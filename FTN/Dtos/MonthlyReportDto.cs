@@ -2,17 +2,21 @@
 {
     public class MonthlyReportDto
     {
-        public int Year { get; set; }
-        public int Month { get; set; }
-        public string MonthName { get; set; } = string.Empty;
-        public int TotalRecords { get; set; }
-        public int TotalPallets { get; set; }
-        public int ActiveRecords { get; set; }
-        public int CompleteRecords { get; set; }
-        public decimal TotalEntranceCost { get; set; }
-        public decimal TotalExitCost { get; set; }
-        public decimal TotalStorageCost { get; set; }
-        public decimal TotalGeneralCost { get; set; }
-        public List<MonthlyRecordDto> Records { get; set; } = new();
+        public int Id { get; set; }
+        public int? Folio { get; set; }
+        public string PartNumbers { get; set; } = string.Empty;
+        public int? Platforms { get; set; }
+        public int? TotalPieces { get; set; }
+        public DateTime? EntryDate { get; set; }
+        public DateTime? ExitDate { get; set; }
+        public DateTime? CreatedAt { get; set; }
+
+
+        public int DaysInStorage { get; set; }
+        public decimal EntranceCost { get; set; }
+        public decimal ExitCost { get; set; }
+        public decimal StorageCost { get; set; }
+        public decimal TotalCost { get; set; }
+        public int Pallets { get; set; }
     }
 }

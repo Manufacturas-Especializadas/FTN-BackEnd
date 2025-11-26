@@ -308,7 +308,7 @@ namespace FTN.Controllers
             }
         }
 
-
+       
         [HttpGet]
         [Route("DownloadMonthlyReport/{year}/{month}")]
         public async Task<IActionResult> DownloadMonthlyReport(int year, int month)
@@ -341,6 +341,88 @@ namespace FTN.Controllers
                 {
                     success = false,
                     message = "Error al generar el archivo Excel",
+                    details = ex.Message
+                });
+            }
+        }
+
+        [HttpPost]
+        [Route("MonthlyReportByRange")]
+        public async Task<IActionResult> GenerateReportByRange([FromBody] ReportByDateDto dto)
+        {
+            try
+            {
+                if (dto.StartDate > dto.EndDate)
+                    return BadRequest(new { message = "La fecha inicial no puede ser mayor que la final" });
+
+                var monthlyData = await _context.StageEntrances
+                        .Where(se => se.EntryDate >= dto.StartDate && se.EntryDate <= dto.EndDate)
+                        .Include(se => se.StageEntrancePartNumbers)
+                        .OrderBy(se => se.EntryDate)
+                        .Select(se => new
+                        {
+                            se.Id,
+                            se.Folio,
+                            se.Platforms,
+                            se.TotalPieces,
+                            se.EntryDate,
+                            se.ExitDate,
+                            PartNumbers = se.StageEntrancePartNumbers
+                                .Select(pn => new { pn.PartNumber, pn.Quantity })
+                                .ToList(),
+                            EntranceCost = 67.50m,
+                            ExitCost = 67.50m,
+                            StorageCost = 133.00m
+                        })
+                        .ToListAsync();
+
+                if (!monthlyData.Any())
+                {
+                    return NotFound(new { message = "No se encontraron registros en el rango de fechas" });
+                }
+
+                var reportData = monthlyData.Select(record =>
+                {
+                    var daysInStorage = CalculateDaysInStorage(record.EntryDate, record.ExitDate);
+
+                    var entranceCost = record.EntranceCost;
+                    var exitCost = record.ExitDate.HasValue ? record.ExitCost : 0m;
+                    var storageCost = !record.ExitDate.HasValue ? record.StorageCost : 0m;
+                    var totalCost = entranceCost + exitCost + storageCost;
+
+                    return new MonthlyReportDto
+                    {
+                        Id = record.Id,
+                        Folio = record.Folio,
+                        PartNumbers = string.Join(", ", record.PartNumbers.Select(pn => $"{pn.PartNumber}({pn.Quantity})")),
+                        Platforms = record.Platforms,
+                        TotalPieces = record.TotalPieces,
+                        EntryDate = record.EntryDate,
+                        ExitDate = record.ExitDate,
+                        CreatedAt = null,
+                        DaysInStorage = daysInStorage,
+                        Pallets = record.Platforms ?? 0,
+                        EntranceCost = entranceCost,
+                        ExitCost = exitCost,
+                        StorageCost = storageCost,
+                        TotalCost = totalCost
+                    };
+                }).ToList();
+
+                var excelFile = _excelReportService.GenerateMonthlyReport(reportData);
+
+                return File(
+                    excelFile,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    $"Reporte_{dto.StartDate:yyyyMMdd}_a_{dto.EndDate:yyyyMMdd}.xlsx"
+                );
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error al generar el reporte",
                     details = ex.Message
                 });
             }
