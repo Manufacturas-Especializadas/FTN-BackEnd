@@ -791,21 +791,51 @@ namespace FTN.Controllers
         [Route("Delete/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var IdStageEntrance = await _context.StageEntrances.FindAsync(id);
+            using var transaction = await _context.Database.BeginTransactionAsync();
 
-            if (IdStageEntrance == null)
+            try
             {
-                return NotFound("Id no encontrado");
+                var stageEntrance = await _context.StageEntrances
+                    .FirstOrDefaultAsync(se => se.Id == id);
+
+                if (stageEntrance == null)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "Registro no encontrado"
+                    });
+                }
+
+                var partNumbers = await _context.StageEntrancePartNumbers
+                    .Where(pn => pn.StageEntranceId == id)
+                    .ToListAsync();
+
+                if (partNumbers.Any())
+                {
+                    _context.StageEntrancePartNumbers.RemoveRange(partNumbers);
+                }
+
+                _context.StageEntrances.Remove(stageEntrance);
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Registro y sus detalles eliminados correctamente"
+                });
             }
-
-            _context.StageEntrances.Remove(IdStageEntrance);
-            await _context.SaveChangesAsync();
-
-            return Ok(new
+            catch (Exception ex)
             {
-                success = true,
-                message = "Registro eliminado"
-            });
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error interno al eliminar",
+                    detail = ex.Message
+                });
+            }
         }
 
         private async Task<IActionResult> GetMonthlyReports(int year, int month)
