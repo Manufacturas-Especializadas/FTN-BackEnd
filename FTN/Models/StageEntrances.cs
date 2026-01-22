@@ -9,7 +9,7 @@ public partial class StageEntrances
 
     public int? Folio { get; set; }
 
-    public string PartNumbers { get; set; }
+    public string? PartNumbers { get; set; } = string.Empty;
 
     public int? Platforms { get; set; }
 
@@ -27,9 +27,9 @@ public partial class StageEntrances
 
     public DateTime? UpdatedAt { get; set; }
 
-    public virtual EntranceFee IdEntranceFeeNavigation { get; set; }
+    public virtual EntranceFee? IdEntranceFeeNavigation { get; set; }
 
-    public virtual StorageCost IdStorageCostNavigation { get; set; }
+    public virtual StorageCost? IdStorageCostNavigation { get; set; }
 
     public virtual ICollection<StageEntrancePartNumbers> StageEntrancePartNumbers { get; set; } = new List<StageEntrancePartNumbers>();
 }
